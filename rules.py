@@ -20,22 +20,62 @@ import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+VERSION = 3               # rules 판
+NEEDS_NLU = 2             # 이 rules.py 가 기대하는 nlu 판
+
+def _옛_nlu_파일() -> str:
+    """옆에 한 파일짜리 옛 nlu.py 가 남아 있나. 있으면 그 경로를.
+
+    폴더와 파일이 둘 다 있으면 파이썬은 폴더를 먼저 집으므로 대개 탈은
+    없다. 그래도 헷갈림의 씨앗이니 알려는 준다.
+    """
+    import os
+    곁 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nlu.py")
+    return 곁 if os.path.isfile(곁) else ""
+
+
+_옛파일 = _옛_nlu_파일()   # 옆에 남아 있던 옛 nlu.py. 진단에서 알려 준다
+
+
+def _곁에_있는_nlu():
+    """이 파일 옆의 nlu/ 폴더를 경로로 짚어 직접 불러온다.
+
+    같은 폴더에 옛 nlu.py 가 남아 있으면 파이썬은 폴더보다 그 파일을 먼저
+    집는다. 지우라고 말해도 잊기 쉬우니, 폴더가 있으면 그쪽을 쓰게 한다.
+    """
+    import importlib.util
+    import os
+    import sys
+
+    곁 = os.path.dirname(os.path.abspath(__file__))
+    폴더 = os.path.join(곁, "nlu")
+    첫장 = os.path.join(폴더, "__init__.py")
+    if not os.path.isfile(첫장):
+        return None
+    자리 = importlib.util.spec_from_file_location(
+        "nlu", 첫장, submodule_search_locations=[폴더])
+    모듈 = importlib.util.module_from_spec(자리)
+    sys.modules["nlu"] = 모듈          # 속의 'from . import text' 가 되게 먼저 등록
+    자리.loader.exec_module(모듈)
+    return 모듈
+
+
 try:                      # 패키지 안에서 불려도, 스크립트로 불려도 되게
     from . import nlu
 except ImportError:       # pragma: no cover
     import nlu
 
-NEEDS_NLU = 2             # 이 rules.py 가 기대하는 nlu 판
-
 if getattr(nlu, "VERSION", 1) < NEEDS_NLU:      # pragma: no cover
-    # 옛 nlu.py(한 파일짜리)가 같은 폴더에 남아 있으면 파이썬이 그쪽을 먼저
-    # 집는다. 그 Reading 에는 새로 생긴 칸이 없어서 답을 만들다 멈춘다.
-    raise ImportError(
-        "말 알아듣는 층이 옛 판입니다.\n"
-        f"  지금 잡힌 것: {getattr(nlu, '__file__', '(모름)')}\n"
-        "  이 폴더의 nlu.py 를 지우고, nlu/ 폴더를 통째로 놓아 주세요.\n"
-        "  (nlu/__init__.py, text.py, numbers.py, timeframe.py, lexicon.py,\n"
-        "   entities.py, intents.py, parse.py, explain.py)")
+    _옛파일 = getattr(nlu, "__file__", "") or _옛파일
+    _새것 = _곁에_있는_nlu()
+    if _새것 is None:
+        raise ImportError(
+            "말 알아듣는 층이 옛 판입니다.\n"
+            f"  지금 잡힌 것: {_옛파일}\n"
+            "  이 폴더의 nlu.py 를 지우고, nlu/ 폴더를 통째로 놓아 주세요.\n"
+            "  (nlu/__init__.py, text.py, numbers.py, timeframe.py, lexicon.py,\n"
+            "   entities.py, intents.py, parse.py, explain.py)")
+    nlu = _새것
 
 WON = "원"
 MODES = ("실제매매", "가상매매")
@@ -1240,6 +1280,57 @@ def suggest(question: str) -> str:
     return "\n".join(lines)
 
 
+def doctor(base: Path = None) -> str:
+    """무엇이 어디서 불려 왔는지, 기록 폴더는 멀쩡한지 한눈에.
+
+    돌다 이상하면 이것부터 찍어 본다. 파일이 섞였는지 바로 드러난다.
+    """
+    import os
+    import platform
+    import sys
+
+    base = Path(base or ".")
+    줄 = ["■ 불러온 것",
+          f"  rules   {os.path.abspath(__file__)}  ({VERSION}판)",
+          f"  nlu     {getattr(nlu, '__file__', '(모름)')}"
+          f"  ({getattr(nlu, 'VERSION', 1)}판)",
+          f"  파이썬   {platform.python_version()}  {platform.system()}"]
+    if _옛파일:
+        줄.append(f"  ! 옛 nlu.py 가 옆에 있습니다: {_옛파일}")
+        쓰는중 = str(getattr(nlu, "__file__", "")).endswith("nlu.py")
+        줄.append("    " + ("지금 그 파일을 쓰고 있습니다. nlu/ 폴더를 놓아 주세요."
+                           if 쓰는중 else
+                           "지금은 nlu/ 폴더 쪽을 쓰니, 그 파일은 지워도 됩니다."))
+    곁 = Path(os.path.dirname(os.path.abspath(__file__))) / "nlu"
+    빠진 = [이름 for 이름 in ("__init__.py", "text.py", "numbers.py", "timeframe.py",
+                          "lexicon.py", "entities.py", "intents.py", "parse.py",
+                          "explain.py") if not (곁 / 이름).is_file()]
+    if 빠진:
+        줄.append(f"  ! nlu/ 에 없는 파일: {', '.join(빠진)}")
+
+    줄 += ["", f"■ 기록 폴더  {base.resolve()}"]
+    본것 = False
+    for mode in MODES:
+        for 이름 in (f"{mode}_일별손익.csv", f"{mode}_보유종목.csv",
+                    f"{mode}_거래내역.csv"):
+            길 = base / 이름
+            if 길.is_file():
+                본것 = True
+                줄.append(f"  {이름:24s} {len(_read(길)):4d}줄")
+    길 = base / "자동매매_일지.csv"
+    if 길.is_file():
+        본것 = True
+        줄.append(f"  {'자동매매_일지.csv':24s} {len(_read(길)):4d}줄")
+    if not 본것:
+        줄.append("  (기록 파일이 하나도 없습니다. 폴더를 일러 주세요:"
+                  " python rules.py 기록폴더)")
+    else:
+        말 = catalog(base)
+        줄.append(f"  아는 종목 {len(말)}개"
+                  + (f": {', '.join(s.label for s in 말[:6])}" if 말 else ""))
+    return "\n".join(줄)
+
+
 def ask_back(후보: tuple) -> str:
     """두 뜻 사이에서 헷갈렸을 때 되묻는 말."""
     첫, 둘 = (nlu.say_intent(후보[0]), nlu.say_intent(후보[1]))
@@ -1352,12 +1443,18 @@ def _main() -> None:                  # pragma: no cover
     import sys
     args = [a for a in sys.argv[1:]]
     설명 = "--why" in args
-    args = [a for a in args if a != "--why"]
+    점검 = "--doctor" in args
+    args = [a for a in args if a not in ("--why", "--doctor")]
     base = Path(args[0]) if args and not args[0].startswith("-") else Path(".")
+    if 점검:
+        print(doctor(base))
+        return
     rest = " ".join(args[1:]) if len(args) > 1 else ""
     chat = Conversation(base)
 
     def 한번(q: str) -> str:
+        if q.startswith("??") or q.strip() in ("--doctor", "상태", "점검"):
+            return doctor(base)
         if 설명 or q.startswith("?"):
             return nlu.trace(q.lstrip("? "), catalog(base))
         return chat.ask(q)
@@ -1365,7 +1462,13 @@ def _main() -> None:                  # pragma: no cover
     if rest:
         print(한번(rest))
         return
-    print("무엇이 궁금하신가요? (앞에 ? 를 붙이면 어떻게 알아들었는지 보여 줍니다)\n")
+    print(f"매매 기록 봇 (rules {VERSION}판 · nlu {getattr(nlu, 'VERSION', 1)}판"
+          f" · 기록 {base.resolve()})")
+    if _옛파일:
+        print("  ! 옆에 옛 nlu.py 가 남아 있습니다. 지금은 nlu/ 폴더 쪽을 쓰니"
+              " 지워도 됩니다.")
+    print("무엇이 궁금하신가요?"
+          " (앞에 ? 를 붙이면 어떻게 알아들었는지, ?? 를 붙이면 상태를 봅니다)\n")
     while True:
         try:
             q = input("> ").strip()

@@ -337,6 +337,20 @@ class 답변(unittest.TestCase):
         import nlu
         self.assertGreaterEqual(nlu.VERSION, rules.NEEDS_NLU)
 
+    def test_상태_점검이_어디서_불러왔는지_보여준다(self):
+        말 = rules.doctor(self.base)
+        self.assertIn("불러온 것", 말)
+        self.assertIn("rules", 말)
+        self.assertIn("실제매매_일별손익.csv", 말)
+        self.assertIn("아는 종목", 말)
+
+    def test_기록이_없는_폴더도_점검은_된다(self):
+        빈곳 = Path(tempfile.mkdtemp())
+        try:
+            self.assertIn("기록 파일이 하나도 없습니다", rules.doctor(빈곳))
+        finally:
+            shutil.rmtree(빈곳, ignore_errors=True)
+
     def test_때만_물어도_답한다(self):
         답 = self.묻기("오늘은?")
         self.assertIn("한눈에", 답)

@@ -121,4 +121,7 @@ def route(name: str, slots: dict) -> tuple:
             return "trades", "사고판 이야기로 봄"
         if 지표:
             return "pnl", "지표를 물어 손익으로 봄"
+        if slots.get("period_explicit"):
+            # "오늘은?" 처럼 때만 말한 물음. 그날을 한눈에 보여 주는 편이 낫다
+            return "summary", "때만 말해 그날 요약으로 봄"
     return name, ""

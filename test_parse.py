@@ -59,6 +59,16 @@ class 옮김(unittest.TestCase):
     def test_종목만_말하면_그_종목(self):
         self.assertEqual(읽기("삼성전자").intent, "stock")
 
+    def test_때만_말하면_그날_요약(self):
+        for q in ("오늘은?", "어제는?", "이번 주는?", "9월 3일은?"):
+            with self.subTest(q=q):
+                self.assertEqual(읽기(q).intent, "summary")
+
+    def test_때_말고_딴_얘기가_섞이면_모른다고_한다(self):
+        for q in ("오늘 날씨 어때", "오늘 뭐 먹지"):
+            with self.subTest(q=q):
+                self.assertEqual(읽기(q).intent, "unknown")
+
     def test_옮긴_까닭을_남긴다(self):
         self.assertTrue(읽기("삼성전자 수익 얼마야").notes)
 

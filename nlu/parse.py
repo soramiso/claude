@@ -31,6 +31,26 @@ TIMELESS = ("holdings", "stock", "ranking", "help", "exposure", "breakeven")
 
 _SPLIT_RE = re.compile(r"그리고|,|、|\+|또한|이랑|하고|랑|그다음|및|또")
 
+# 때를 가리키는 말들. 이것만 남은 물음("오늘은?")은 그날 요약으로 본다.
+_TIME_WORDS = ("오늘", "어제", "그저께", "그끄저께", "엊그제", "내일", "모레",
+               "이번", "지난", "지지난", "저번", "요번", "주", "달", "월", "해",
+               "년", "일", "요일", "분기", "상반기", "하반기", "최근", "요즘",
+               "근래", "전체", "누적", "올해", "작년", "재작년", "영업일",
+               "주말", "평일", "오전", "오후", "장중", "아침", "점심", "저녁",
+               "금주", "금월", "금일", "월초", "월말", "연초", "연말", "때",
+               "기간", "동안", "지금", "현재", "며칠", "하루", "이틀", "열흘")
+
+
+def _only_period(raw: str) -> bool:
+    """때를 가리키는 말 말고는 별 내용이 없는 물음인지."""
+    for t in T.tokens(raw):
+        if re.fullmatch(r"\d+[가-힣]*", t):
+            continue
+        if any(w in t for w in _TIME_WORDS):
+            continue
+        return False
+    return True
+
 
 class Reading(NamedTuple):
     """질문 하나를 읽어 낸 결과. rules 는 이것만 보고 답을 만든다."""
@@ -96,6 +116,7 @@ def understand(question: str, catalog: Iterable = (), terms: Iterable = (),
         "metric": E.find_metric(raw), "want": E.find_want(raw),
         "side": E.find_side(raw), "constraints": N.parse_constraints(raw),
         "clock": period.has_clock(),
+        "period_explicit": period.explicit and _only_period(raw),
         "target": any(w in q for w in ("종목", "거있", "것있", "거없", "것없",
                                        "거만", "것만", "거는", "게있", "애들",
                                        "놈", "주식은", "거뭐", "것뭐")),

@@ -333,6 +333,14 @@ class 답변(unittest.TestCase):
         self.assertIn("조건 충족",
                       rules.answer_why(self.base, "왜", "실제매매", ["삼성전자", "005930"]))
 
+    def test_옛_nlu_와_섞이지_않게_판을_본다(self):
+        import nlu
+        self.assertGreaterEqual(nlu.VERSION, rules.NEEDS_NLU)
+
+    def test_때만_물어도_답한다(self):
+        답 = self.묻기("오늘은?")
+        self.assertIn("한눈에", 답)
+
     def test_date_scope_는_그대로(self):
         s, e, 이름 = rules.date_scope("어제 손익")
         self.assertEqual((s, e, 이름), (어제, 어제, "어제"))

@@ -34,6 +34,21 @@ API 키 없이, 자동매매가 남긴 CSV 에서 답을 바로 계산하는 규
 | 대화 | 없음 | `"그럼 어제는?"`, `"그건 왜 샀어?"` 이어받기, 여러 턴 기억 |
 | 모를 때 | 빈 문자열 | 빈 문자열(약속 그대로) + 되묻기 + 기록 밖 물음은 왜 못 하는지 설명 |
 
+## 놓는 법
+
+```
+bot/
+  rules.py
+  nlu/
+    __init__.py  text.py  numbers.py  timeframe.py  lexicon.py
+    entities.py  intents.py  parse.py  explain.py  __main__.py
+```
+
+**옛 `nlu.py`(한 파일짜리)가 같은 폴더에 남아 있으면 지워야 한다.** 파이썬은
+`nlu/` 폴더보다 `nlu.py` 파일을 먼저 집기 때문에, 그대로 두면 옛 층이 불려
+`Reading` 의 칸이 없다는 오류가 난다. `rules.py` 가 불릴 때 판 번호를 보고
+그 경우를 잡아 무엇을 해야 하는지 알려 준다.
+
 ## 쓰기
 
 ```python

@@ -16,6 +16,10 @@
 
 from __future__ import annotations
 
+# 판 번호. rules.py 가 이 숫자를 보고 옛 nlu.py 가 잡혔는지 가려낸다.
+# 바깥에 내보이는 이름이나 Reading 의 칸을 바꿀 때 하나 올린다.
+VERSION = 2
+
 from . import entities, explain, intents, lexicon, numbers, parse, text, timeframe
 
 # --- 글자 ---------------------------------------------------------------

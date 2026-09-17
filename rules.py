@@ -25,6 +25,18 @@ try:                      # 패키지 안에서 불려도, 스크립트로 불�
 except ImportError:       # pragma: no cover
     import nlu
 
+NEEDS_NLU = 2             # 이 rules.py 가 기대하는 nlu 판
+
+if getattr(nlu, "VERSION", 1) < NEEDS_NLU:      # pragma: no cover
+    # 옛 nlu.py(한 파일짜리)가 같은 폴더에 남아 있으면 파이썬이 그쪽을 먼저
+    # 집는다. 그 Reading 에는 새로 생긴 칸이 없어서 답을 만들다 멈춘다.
+    raise ImportError(
+        "말 알아듣는 층이 옛 판입니다.\n"
+        f"  지금 잡힌 것: {getattr(nlu, '__file__', '(모름)')}\n"
+        "  이 폴더의 nlu.py 를 지우고, nlu/ 폴더를 통째로 놓아 주세요.\n"
+        "  (nlu/__init__.py, text.py, numbers.py, timeframe.py, lexicon.py,\n"
+        "   entities.py, intents.py, parse.py, explain.py)")
+
 WON = "원"
 MODES = ("실제매매", "가상매매")
 

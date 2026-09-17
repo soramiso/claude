@@ -22,10 +22,12 @@ class 기록:
     def __init__(self):
         self.base = Path(tempfile.mkdtemp())
         일별 = ["날짜,평가손익,실현손익,누적손익,총자산"]
-        for i in range(6, -1, -1):
+        걸음 = [0, 12000, -9000, 15000, -4000, 26000, 50000]   # 오르내림이 있어야
+        누적 = 10000
+        for i, 하루 in zip(range(6, -1, -1), 걸음):
             d = 오늘 - timedelta(days=i)
-            누적 = 100000 - i * 8000
-            일별.append(f"{d.isoformat()},10000,{0 if i else 50000},{누적},{10000000 + 누적}")
+            누적 += 하루
+            일별.append(f"{d.isoformat()},10000,{하루},{누적},{10000000 + 누적}")
         self.쓰기("실제매매_일별손익.csv", 일별)
         self.쓰기("실제매매_보유종목.csv", [
             "종목명,종목코드,수량,평균단가,현재가,평가금액,평가손익,수익률",
@@ -33,14 +35,19 @@ class 기록:
             "카카오,035720,5,50000,49000,245000,-5000,-2.00",
             "에코프로비엠,247540,3,100000,101000,303000,3000,1.00",
         ])
+        그제 = 오늘 - timedelta(days=2)
         self.쓰기("실제매매_거래내역.csv", [
             "일시,구분,종목명,종목코드,수량,단가,거래금액,결과",
+            f"{날(그제, '09:45')},매수,카카오,035720,5,50000,250000,접수",
             f"{날(어제, '10:05')},매수,에코프로비엠,247540,3,100000,300000,접수",
+            f"{날(어제, '14:40')},매수,카카오,035720,3,49500,148500,잔고부족",
             f"{날(오늘, '09:31')},매수,삼성전자,005930,10,70000,700000,접수",
             f"{날(오늘, '14:02')},매도,카카오,035720,5,51000,255000,접수",
         ])
         self.쓰기("자동매매_일지.csv", [
             "일시,내용",
+            f"{날(그제, '09:45')},카카오(035720) 조건 충족 매수 5주",
+            f"{날(그제, '15:10')},카카오(035720) 손절 매도 검토 -1.2%",
             f"{날(어제, '10:05')},에코프로비엠(247540) 조건 충족 매수 3주",
             f"{날(오늘, '09:31')},삼성전자(005930) 조건 충족 매수 10주",
             f"{날(오늘, '11:00')},장중 점검 완료",
@@ -163,6 +170,104 @@ class 답변(unittest.TestCase):
     def test_줄임말과_초성(self):
         self.assertIn("삼성전자", self.묻기("삼전 어때"))
         self.assertIn("삼성전자", self.묻기("ㅅㅅㅈㅈ 어때"))
+
+    # ------------------------------------------------------------ 넓힌 답들
+    def test_견주기(self):
+        답 = self.묻기("지난주 대비 이번주 어때")
+        self.assertIn("지난 주 vs 이번 주", 답)
+        self.assertIn("실현손익", 답)
+
+    def test_견줄_말이_없으면_직전_구간과(self):
+        답 = self.묻기("어제보다 나아졌어?")
+        self.assertIn("vs", 답)
+
+    def test_평균(self):
+        답 = self.묻기("하루 평균 얼마 벌어?")
+        self.assertIn("하루 평균", 답)
+        self.assertNotIn("최근 1일", 답)          # '하루' 를 기간으로 읽으면 안 된다
+
+    def test_시간대별(self):
+        답 = self.묻기("몇 시에 제일 잘 돼?")
+        self.assertIn("시간대별", 답)
+        self.assertIn("09시", 답)
+
+    def test_요일별(self):
+        self.assertIn("요일별", self.묻기("요일별 성적 보여줘"))
+
+    def test_낙폭(self):
+        답 = self.묻기("최대 낙폭 얼마야")
+        self.assertIn("최대 낙폭", 답)
+        self.assertIn("-9,000원", 답)
+
+    def test_연승연패(self):
+        답 = self.묻기("연패 중이야?")
+        self.assertIn("연패", 답)
+        self.assertIn("최장", 답)
+
+    def test_보유기간(self):
+        답 = self.묻기("평균 보유 기간")
+        self.assertIn("평균 보유 기간", 답)
+        self.assertIn("에코프로비엠", 답)
+
+    def test_수수료는_없으면_어림잡고_그렇다고_말한다(self):
+        답 = self.묻기("수수료 얼마 나갔어")
+        self.assertIn("어림", 답)
+        self.assertIn("거래세", 답)
+
+    def test_본전(self):
+        답 = self.묻기("본전까지 얼마 남았어")
+        self.assertIn("본전", 답)
+        self.assertIn("카카오", 답)
+
+    def test_비중(self):
+        답 = self.묻기("주식 비중 어때")
+        self.assertIn("비중", 답)
+        self.assertIn("%", 답)
+
+    def test_미체결(self):
+        답 = self.묻기("최근 미체결 있어?")
+        self.assertIn("잔고부족", 답)
+
+    def test_미체결이_없으면_없다고_한다(self):
+        self.assertIn("막힌 주문은 없습니다", self.묻기("오늘 미체결 있어?"))
+
+    def test_일지_검색(self):
+        답 = self.묻기("일지에서 손절 찾아줘")
+        self.assertIn("손절", 답)
+        self.assertNotIn("조건 충족 매수", 답)
+
+    def test_횟수(self):
+        답 = self.묻기("오늘 몇 번 거래했어")
+        self.assertIn("2건", 답)
+        self.assertIn("매수 1건", 답)
+
+    def test_큰_거래(self):
+        답 = self.묻기("제일 큰 거래가 뭐야")
+        self.assertIn("삼성전자", 답)
+        self.assertIn("700,000원", 답)
+
+    def test_활동량(self):
+        답 = self.묻기("최근 얼마나 매매했어")
+        self.assertIn("하루 평균", 답)
+        self.assertIn("가장 바빴던 날", 답)
+
+    def test_되풀이되는_실수(self):
+        답 = self.묻기("같은 실수 반복해?")
+        self.assertTrue("되풀이" in 답 or "눈에 띄게" in 답)
+
+    def test_잡담에는_짧게(self):
+        self.assertIn("안녕하세요", self.묻기("안녕"))
+        self.assertIn("다행", self.묻기("고마워"))
+
+    def test_기록_밖_물음은_빈_문자열(self):
+        for q in ("내일 뭐 살까?", "코스피 어때", "손절선 바꿔줘"):
+            with self.subTest(q=q):
+                self.assertEqual(self.묻기(q), "")
+
+    def test_대화에서는_왜_답할_수_없는지_말한다(self):
+        대화 = rules.Conversation(self.base)
+        답 = 대화.ask("내일 뭐 살까?")
+        self.assertIn("앞일은 기록에 없습니다", 답)
 
     # ------------------------------------------------------------ 말버릇
     def test_띄어쓰기와_조사를_안_가린다(self):

@@ -80,6 +80,13 @@ if getattr(nlu, "VERSION", 1) < NEEDS_NLU:      # pragma: no cover
 WON = "원"
 MODES = ("실제매매", "가상매매")
 
+# IDLE 에서 F5 로 돌리면 폴더를 일러 줄 자리가 없다. 기록이 딴 데 있는데
+# 스스로 찾지 못하거든 여기에 적어 두면 된다. 예: r"D:\매매\기록"
+기록폴더 = ""
+
+# 이 꼬리를 단 파일이 있는 곳을 기록 폴더로 본다.
+RECORD_MARKS = ("_일별손익.csv", "_거래내역.csv", "_보유종목.csv", "자동매매_일지.csv")
+
 
 def _cell(v) -> str:
     """칸 하나를 문자열로. 머리글보다 칸이 많은 줄은 값이 리스트로 온다."""
@@ -175,6 +182,73 @@ _WEEKNAME = "월화수목금토일"
 def _weekday_of(stamp: str) -> str:
     got = nlu.when(stamp or "")
     return _WEEKNAME[got[0].weekday()] if got else ""
+
+
+def has_records(folder: Path) -> bool:
+    """이 폴더에 매매 기록이 있나."""
+    try:
+        for f in folder.iterdir():
+            if f.is_file() and any(f.name.endswith(k) for k in RECORD_MARKS):
+                return True
+    except OSError:
+        pass
+    return False
+
+
+def _찾아볼_곳(start: Path, 위로: int = 2) -> list:
+    """가까운 데서부터 넓혀 가며 볼 폴더들. 차례가 곧 우선순위다.
+
+    준 자리와 이 파일이 있는 자리, 그 위 두 단계까지. 각각의 한 단계
+    아래도 본다. 기록을 bot/ 옆에 두든 위에 두든 걸리게 하려는 것이다.
+    """
+    try:
+        곁 = Path(__file__).resolve().parent
+    except NameError:                      # pragma: no cover
+        곁 = Path(".").resolve()
+    곳 = []
+    for 뿌리 in ([start, 곁] if 곁 != start else [start]):
+        위 = 뿌리
+        for _ in range(위로 + 1):
+            if 위 not in 곳:
+                곳.append(위)
+            if 위 == 위.parent:            # 뿌리까지 왔다
+                break
+            위 = 위.parent
+
+    넓힌 = []
+    for d in 곳:
+        if d not in 넓힌:
+            넓힌.append(d)
+        try:
+            아래 = [x for x in sorted(d.iterdir())
+                   if x.is_dir() and not x.name.startswith((".", "__"))]
+        except OSError:
+            continue
+        # 폴더가 많은 곳(임시 폴더, 내려받기 폴더 같은)은 훑지 않는다.
+        # 남의 기록을 집는 것보다 못 찾고 되묻는 편이 낫다.
+        if len(아래) > 24:
+            continue
+        넓힌 += [x for x in 아래 if x not in 넓힌]
+    return 넓힌
+
+
+def find_base(start=None, 위로: int = 2) -> Path:
+    """기록이 있는 폴더를 스스로 찾는다. 못 찾으면 준 자리를 그대로.
+
+    손으로 적어 둔 기록폴더가 있으면 그것이 먼저다. 위로 는 몇 단계까지
+    거슬러 볼지다. 넓힐수록 엉뚱한 폴더를 집을 위험도 커진다.
+    """
+    if 기록폴더:
+        손 = Path(기록폴더)
+        if has_records(손):
+            return 손.resolve()
+    start = Path(start or ".").resolve()
+    if has_records(start):
+        return start
+    for d in _찾아볼_곳(start, 위로):
+        if has_records(d):
+            return d.resolve()
+    return start
 
 
 # ---------------------------------------------------------------- 기록 읽기
@@ -1322,8 +1396,17 @@ def doctor(base: Path = None) -> str:
         본것 = True
         줄.append(f"  {'자동매매_일지.csv':24s} {len(_read(길)):4d}줄")
     if not 본것:
-        줄.append("  (기록 파일이 하나도 없습니다. 폴더를 일러 주세요:"
-                  " python rules.py 기록폴더)")
+        줄.append("  기록 파일이 하나도 없습니다.")
+        짚이는 = find_base(base)
+        if has_records(짚이는):
+            줄.append(f"  → 여기 있는 것 같습니다: {짚이는}")
+            줄.append("    대화 중에 '폴더 <경로>' 라고 치면 그리로 옮깁니다.")
+        else:
+            줄.append("  둘러본 곳:")
+            for d in _찾아볼_곳(base)[:8]:
+                줄.append(f"    {d}")
+            줄.append("  rules.py 맨 위의 기록폴더 = \"\" 에 경로를 적어 두거나,"
+                      " python rules.py <기록폴더> 로 일러 주세요.")
     else:
         말 = catalog(base)
         줄.append(f"  아는 종목 {len(말)}개"
@@ -1445,25 +1528,45 @@ def _main() -> None:                  # pragma: no cover
     설명 = "--why" in args
     점검 = "--doctor" in args
     args = [a for a in args if a not in ("--why", "--doctor")]
-    base = Path(args[0]) if args and not args[0].startswith("-") else Path(".")
+    준자리 = Path(args[0]) if args and not args[0].startswith("-") else None
+    base = Path(준자리) if 준자리 and has_records(Path(준자리)) else find_base(준자리)
+    스스로 = 준자리 is None or Path(준자리).resolve() != base
     if 점검:
         print(doctor(base))
         return
     rest = " ".join(args[1:]) if len(args) > 1 else ""
     chat = Conversation(base)
 
+    살림 = {"base": base, "chat": chat}
+
     def 한번(q: str) -> str:
-        if q.startswith("??") or q.strip() in ("--doctor", "상태", "점검"):
-            return doctor(base)
-        if 설명 or q.startswith("?"):
-            return nlu.trace(q.lstrip("? "), catalog(base))
-        return chat.ask(q)
+        받은 = q.strip()
+        if 받은.startswith("??") or 받은 in ("--doctor", "상태", "점검"):
+            return doctor(살림["base"])
+        if 받은.startswith(("폴더", "cd ")):
+            길 = 받은.split(None, 1)[1].strip().strip('"\'') if " " in 받은 else ""
+            새곳 = Path(길) if 길 else None
+            if 새곳 is None or not 새곳.is_dir():
+                return f"그런 폴더가 없습니다: {길 or '(빈칸)'}"
+            살림["base"] = 새곳
+            살림["chat"] = Conversation(새곳)
+            있나 = "" if has_records(새곳) else "  (여기에도 기록 파일은 없습니다)"
+            return f"기록 폴더를 {새곳.resolve()} 로 옮겼습니다.{있나}"
+        if 받은 in ("?", "??", "도움", "도움말"):
+            return HELP
+        if 설명 or 받은.startswith("?"):
+            return nlu.trace(받은.lstrip("? "), catalog(살림["base"]))
+        return 살림["chat"].ask(받은)
 
     if rest:
         print(한번(rest))
         return
-    print(f"매매 기록 봇 (rules {VERSION}판 · nlu {getattr(nlu, 'VERSION', 1)}판"
-          f" · 기록 {base.resolve()})")
+    꼬리 = " (스스로 찾음)" if 스스로 and has_records(base) else ""
+    print(f"매매 기록 봇 (rules {VERSION}판 · nlu {getattr(nlu, 'VERSION', 1)}판)")
+    print(f"  기록 {base.resolve()}{꼬리}")
+    if not has_records(base):
+        print("  ! 이 폴더에 매매 기록이 없습니다. '??' 를 쳐서 어디를 봤는지"
+              " 확인하거나, '폴더 <경로>' 로 옮기세요.")
     if _옛파일:
         print("  ! 옆에 옛 nlu.py 가 남아 있습니다. 지금은 nlu/ 폴더 쪽을 쓰니"
               " 지워도 됩니다.")

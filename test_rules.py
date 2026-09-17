@@ -337,6 +337,32 @@ class 답변(unittest.TestCase):
         import nlu
         self.assertGreaterEqual(nlu.VERSION, rules.NEEDS_NLU)
 
+    def test_기록이_있는_폴더를_알아본다(self):
+        self.assertTrue(rules.has_records(self.base))
+        빈곳 = Path(tempfile.mkdtemp())
+        try:
+            self.assertFalse(rules.has_records(빈곳))
+        finally:
+            shutil.rmtree(빈곳, ignore_errors=True)
+
+    def test_기록_폴더를_스스로_찾는다(self):
+        둥지 = Path(tempfile.mkdtemp())
+        try:
+            (둥지 / "bot").mkdir()
+            shutil.copy(self.base / "실제매매_일별손익.csv", 둥지)
+            self.assertEqual(rules.find_base(둥지 / "bot", 위로=1).resolve(),
+                             둥지.resolve())            # 한 단계 위에서 찾는다
+        finally:
+            shutil.rmtree(둥지, ignore_errors=True)
+
+    def test_못_찾으면_준_자리를_그대로(self):
+        빈곳 = Path(tempfile.mkdtemp())
+        try:
+            self.assertEqual(rules.find_base(빈곳, 위로=0).resolve(),
+                             빈곳.resolve())
+        finally:
+            shutil.rmtree(빈곳, ignore_errors=True)
+
     def test_상태_점검이_어디서_불러왔는지_보여준다(self):
         말 = rules.doctor(self.base)
         self.assertIn("불러온 것", 말)
@@ -347,7 +373,8 @@ class 답변(unittest.TestCase):
     def test_기록이_없는_폴더도_점검은_된다(self):
         빈곳 = Path(tempfile.mkdtemp())
         try:
-            self.assertIn("기록 파일이 하나도 없습니다", rules.doctor(빈곳))
+            말 = rules.doctor(빈곳)
+            self.assertIn("기록 파일이 하나도 없습니다", 말)
         finally:
             shutil.rmtree(빈곳, ignore_errors=True)
 
